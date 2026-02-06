@@ -1,11 +1,14 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-服务器自动化巡检脚本
+服务器自动化巡检脚本 (Python 2.7 兼容版本)
 功能：对指定服务器进行SSH连接，检查主机资源和进程状态，自动标记异常主机，并通过邮件发送HTML报告
 """
 
+from __future__ import print_function, unicode_literals
+
 import os
+import sys
 import smtplib
 import argparse
 import json
@@ -13,8 +16,6 @@ from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from dataclasses import dataclass, field
-from typing import Optional
 import paramiko
 
 
@@ -27,51 +28,53 @@ THRESHOLDS = {
 }
 
 
-@dataclass
-class ServerConfig:
+class ServerConfig(object):
     """服务器配置"""
-    host: str
-    port: int = 22
-    username: str = "root"
-    password: Optional[str] = None
-    key_file: Optional[str] = None
+    
+    def __init__(self, host, port=22, username="root", password=None, key_file=None):
+        self.host = host
+        self.port = port
+        self.username = username
+        self.password = password
+        self.key_file = key_file
 
 
-@dataclass
-class InspectionResult:
+class InspectionResult(object):
     """巡检结果"""
-    host: str
-    timestamp: str = field(default_factory=lambda: datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-    success: bool = True
-    score: int = 100  # 健康评分，满分100
     
-    # 资源使用情况
-    cpu_percent: Optional[float] = None
-    memory_percent: Optional[float] = None
-    disk_usage: Optional[dict] = None  # {挂载点: 使用率}
-    zombie_count: int = 0
+    def __init__(self, host):
+        self.host = host
+        self.timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        self.success = True
+        self.score = 100  # 健康评分，满分100
+        
+        # 资源使用情况
+        self.cpu_percent = None
+        self.memory_percent = None
+        self.disk_usage = None  # {挂载点: 使用率}
+        self.zombie_count = 0
+        
+        # 异常信息
+        self.errors = []
+        self.warnings = []
     
-    # 异常信息
-    errors: list = field(default_factory=list)
-    warnings: list = field(default_factory=list)
-    
-    def add_error(self, error: str, score_penalty: int = 20):
+    def add_error(self, error, score_penalty=20):
         """添加错误并扣分"""
         self.errors.append(error)
         self.score = max(0, self.score - score_penalty)
     
-    def add_warning(self, warning: str, score_penalty: int = 10):
+    def add_warning(self, warning, score_penalty=10):
         """添加警告并扣分"""
         self.warnings.append(warning)
         self.score = max(0, self.score - score_penalty)
     
     @property
-    def is_abnormal(self) -> bool:
+    def is_abnormal(self):
         """是否存在异常"""
         return len(self.errors) > 0 or len(self.warnings) > 0
     
     @property
-    def risk_level(self) -> str:
+    def risk_level(self):
         """风险等级"""
         if self.score >= 90:
             return "健康"
@@ -83,7 +86,7 @@ class InspectionResult:
             return "高风险"
     
     @property
-    def risk_color(self) -> str:
+    def risk_color(self):
         """风险等级对应颜色"""
         if self.score >= 90:
             return "#28a745"  # 绿色
@@ -95,13 +98,15 @@ class InspectionResult:
             return "#dc3545"  # 红色
 
 
-class ServerInspector:
+class ServerInspector(object):
     """服务器巡检器"""
     
-    def __init__(self, timeout: int = THRESHOLDS["ssh_timeout"]):
+    def __init__(self, timeout=None):
+        if timeout is None:
+            timeout = THRESHOLDS["ssh_timeout"]
         self.timeout = timeout
     
-    def connect(self, config: ServerConfig) -> paramiko.SSHClient:
+    def connect(self, config):
         """建立SSH连接"""
         client = paramiko.SSHClient()
         client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -123,12 +128,12 @@ class ServerInspector:
         client.connect(**connect_kwargs)
         return client
     
-    def execute_command(self, client: paramiko.SSHClient, command: str) -> str:
+    def execute_command(self, client, command):
         """执行远程命令"""
         stdin, stdout, stderr = client.exec_command(command, timeout=30)
         return stdout.read().decode("utf-8", errors="ignore").strip()
     
-    def check_cpu(self, client: paramiko.SSHClient, result: InspectionResult):
+    def check_cpu(self, client, result):
         """检查CPU使用率"""
         try:
             # 使用top命令获取CPU使用率（采样1秒）
@@ -142,13 +147,15 @@ class ServerInspector:
                 
                 if cpu_percent > THRESHOLDS["cpu_percent"]:
                     result.add_error(
-                        f"CPU使用率过高: {cpu_percent:.1f}% (阈值: {THRESHOLDS['cpu_percent']}%)",
+                        "CPU使用率过高: {0:.1f}% (阈值: {1}%)".format(
+                            cpu_percent, THRESHOLDS['cpu_percent']
+                        ),
                         score_penalty=15
                     )
         except Exception as e:
-            result.add_warning(f"CPU检查失败: {str(e)}", score_penalty=5)
+            result.add_warning("CPU检查失败: {0}".format(str(e)), score_penalty=5)
     
-    def check_memory(self, client: paramiko.SSHClient, result: InspectionResult):
+    def check_memory(self, client, result):
         """检查内存使用率"""
         try:
             output = self.execute_command(
@@ -161,13 +168,15 @@ class ServerInspector:
                 
                 if memory_percent > THRESHOLDS["memory_percent"]:
                     result.add_error(
-                        f"内存使用率过高: {memory_percent:.1f}% (阈值: {THRESHOLDS['memory_percent']}%)",
+                        "内存使用率过高: {0:.1f}% (阈值: {1}%)".format(
+                            memory_percent, THRESHOLDS['memory_percent']
+                        ),
                         score_penalty=20
                     )
         except Exception as e:
-            result.add_warning(f"内存检查失败: {str(e)}", score_penalty=5)
+            result.add_warning("内存检查失败: {0}".format(str(e)), score_penalty=5)
     
-    def check_disk(self, client: paramiko.SSHClient, result: InspectionResult):
+    def check_disk(self, client, result):
         """检查磁盘使用率"""
         try:
             output = self.execute_command(
@@ -187,15 +196,17 @@ class ServerInspector:
                             
                             if usage > THRESHOLDS["disk_percent"]:
                                 result.add_error(
-                                    f"磁盘 {mount_point} 使用率过高: {usage:.1f}% (阈值: {THRESHOLDS['disk_percent']}%)",
+                                    "磁盘 {0} 使用率过高: {1:.1f}% (阈值: {2}%)".format(
+                                        mount_point, usage, THRESHOLDS['disk_percent']
+                                    ),
                                     score_penalty=15
                                 )
                         except ValueError:
                             pass
         except Exception as e:
-            result.add_warning(f"磁盘检查失败: {str(e)}", score_penalty=5)
+            result.add_warning("磁盘检查失败: {0}".format(str(e)), score_penalty=5)
     
-    def check_zombie_processes(self, client: paramiko.SSHClient, result: InspectionResult):
+    def check_zombie_processes(self, client, result):
         """检查僵尸进程"""
         try:
             output = self.execute_command(
@@ -212,15 +223,14 @@ class ServerInspector:
                         client,
                         "ps aux | awk '$8 ~ /Z/ {print $2, $11}' | head -5"
                     )
-                    result.add_error(
-                        f"存在 {zombie_count} 个僵尸进程" + 
-                        (f" (PID: {zombie_details.replace(chr(10), ', ')})" if zombie_details else ""),
-                        score_penalty=10
-                    )
+                    error_msg = "存在 {0} 个僵尸进程".format(zombie_count)
+                    if zombie_details:
+                        error_msg += " (PID: {0})".format(zombie_details.replace('\n', ', '))
+                    result.add_error(error_msg, score_penalty=10)
         except Exception as e:
-            result.add_warning(f"僵尸进程检查失败: {str(e)}", score_penalty=5)
+            result.add_warning("僵尸进程检查失败: {0}".format(str(e)), score_penalty=5)
     
-    def inspect(self, config: ServerConfig) -> InspectionResult:
+    def inspect(self, config):
         """执行巡检"""
         result = InspectionResult(host=config.host)
         client = None
@@ -240,13 +250,14 @@ class ServerInspector:
             result.add_error("SSH认证失败", score_penalty=100)
         except paramiko.SSHException as e:
             result.success = False
-            result.add_error(f"SSH连接异常: {str(e)}", score_penalty=100)
-        except TimeoutError:
-            result.success = False
-            result.add_error(f"连接超时 (超过{self.timeout}秒)", score_penalty=100)
+            result.add_error("SSH连接异常: {0}".format(str(e)), score_penalty=100)
         except Exception as e:
             result.success = False
-            result.add_error(f"巡检失败: {str(e)}", score_penalty=100)
+            error_name = type(e).__name__
+            if "timeout" in error_name.lower() or "Timeout" in str(e):
+                result.add_error("连接超时 (超过{0}秒)".format(self.timeout), score_penalty=100)
+            else:
+                result.add_error("巡检失败: {0}".format(str(e)), score_penalty=100)
         finally:
             if client:
                 client.close()
@@ -254,11 +265,11 @@ class ServerInspector:
         return result
 
 
-class HTMLReportGenerator:
+class HTMLReportGenerator(object):
     """HTML报告生成器"""
     
     @staticmethod
-    def generate(results: list[InspectionResult], title: str = "服务器巡检报告") -> str:
+    def generate(results, title="服务器巡检报告"):
         """生成HTML报告"""
         
         # 统计信息
@@ -267,7 +278,7 @@ class HTMLReportGenerator:
         failed = sum(1 for r in results if not r.success)
         avg_score = sum(r.score for r in results) / total if total > 0 else 0
         
-        html = f"""
+        html = """
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -476,8 +487,8 @@ class HTMLReportGenerator:
 <body>
     <div class="container">
         <div class="header">
-            <h1>🖥️ {title}</h1>
-            <div class="subtitle">生成时间: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}</div>
+            <h1>&#128421; {title}</h1>
+            <div class="subtitle">生成时间: {gen_time}</div>
         </div>
         
         <div class="summary">
@@ -499,86 +510,105 @@ class HTMLReportGenerator:
             </div>
         </div>
         
-        <h2 class="section-title">📊 巡检详情</h2>
+        <h2 class="section-title">&#128202; 巡检详情</h2>
         <div class="server-list">
-"""
+""".format(
+            title=title,
+            gen_time=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            total=total,
+            abnormal=abnormal,
+            failed=failed,
+            avg_score=avg_score
+        )
         
         # 按分数排序，异常的排前面
         sorted_results = sorted(results, key=lambda x: (x.success, x.score))
         
         for r in sorted_results:
-            html += f"""
+            cpu_display = "{0:.1f}%".format(r.cpu_percent) if r.cpu_percent is not None else "N/A"
+            mem_display = "{0:.1f}%".format(r.memory_percent) if r.memory_percent is not None else "N/A"
+            
+            html += """
             <div class="server-card">
                 <div class="server-header">
-                    <span class="server-host">🖥️ {r.host}</span>
+                    <span class="server-host">&#128421; {host}</span>
                     <div class="server-score">
-                        <span class="score-badge" style="color: {r.risk_color}">{r.score}分</span>
-                        <span class="risk-badge" style="background: {r.risk_color}; color: #fff">{r.risk_level}</span>
+                        <span class="score-badge" style="color: {risk_color}">{score}分</span>
+                        <span class="risk-badge" style="background: {risk_color}; color: #fff">{risk_level}</span>
                     </div>
                 </div>
                 <div class="server-body">
                     <div class="metrics">
                         <div class="metric">
                             <div class="metric-label">CPU使用率</div>
-                            <div class="metric-value">{f'{r.cpu_percent:.1f}%' if r.cpu_percent is not None else 'N/A'}</div>
+                            <div class="metric-value">{cpu}</div>
                         </div>
                         <div class="metric">
                             <div class="metric-label">内存使用率</div>
-                            <div class="metric-value">{f'{r.memory_percent:.1f}%' if r.memory_percent is not None else 'N/A'}</div>
+                            <div class="metric-value">{mem}</div>
                         </div>
                         <div class="metric">
                             <div class="metric-label">僵尸进程</div>
-                            <div class="metric-value">{r.zombie_count}</div>
+                            <div class="metric-value">{zombie}</div>
                         </div>
                         <div class="metric">
                             <div class="metric-label">巡检时间</div>
-                            <div class="metric-value" style="font-size: 0.9em">{r.timestamp}</div>
+                            <div class="metric-value" style="font-size: 0.9em">{timestamp}</div>
                         </div>
                     </div>
-"""
+""".format(
+                host=r.host,
+                risk_color=r.risk_color,
+                score=r.score,
+                risk_level=r.risk_level,
+                cpu=cpu_display,
+                mem=mem_display,
+                zombie=r.zombie_count,
+                timestamp=r.timestamp
+            )
             
             # 磁盘使用情况
             if r.disk_usage:
                 html += '<div class="metrics">'
                 for mount, usage in r.disk_usage.items():
                     color = "#ff6b6b" if usage > THRESHOLDS["disk_percent"] else "#4ecdc4"
-                    html += f'''
+                    html += """
                         <div class="metric">
                             <div class="metric-label">磁盘 {mount}</div>
                             <div class="metric-value" style="color: {color}">{usage:.1f}%</div>
                         </div>
-'''
+""".format(mount=mount, color=color, usage=usage)
                 html += '</div>'
             
             # 错误信息
             if r.errors:
-                html += '''
+                html += """
                     <div class="errors">
-                        <div class="errors-title">❌ 异常项目</div>
-'''
+                        <div class="errors-title">&#10060; 异常项目</div>
+"""
                 for error in r.errors:
-                    html += f'<div class="error-item">• {error}</div>'
+                    html += '<div class="error-item">&#8226; {0}</div>'.format(error)
                 html += '</div>'
             
             # 警告信息
             if r.warnings:
-                html += '''
+                html += """
                     <div class="warnings">
-                        <div class="warnings-title">⚠️ 警告项目</div>
-'''
+                        <div class="warnings-title">&#9888; 警告项目</div>
+"""
                 for warning in r.warnings:
-                    html += f'<div class="warning-item">• {warning}</div>'
+                    html += '<div class="warning-item">&#8226; {0}</div>'.format(warning)
                 html += '</div>'
             
             if not r.errors and not r.warnings:
-                html += '<div class="no-issues">✅ 所有指标正常</div>'
+                html += '<div class="no-issues">&#9989; 所有指标正常</div>'
             
             html += """
                 </div>
             </div>
 """
         
-        html += f"""
+        html += """
         </div>
         
         <div class="footer">
@@ -591,21 +621,21 @@ class HTMLReportGenerator:
         return html
 
 
-class EmailSender:
+class EmailSender(object):
     """邮件发送器"""
     
-    def __init__(self, smtp_host: str, smtp_port: int, username: str, password: str, use_ssl: bool = True):
+    def __init__(self, smtp_host, smtp_port, username, password, use_ssl=True):
         self.smtp_host = smtp_host
         self.smtp_port = smtp_port
         self.username = username
         self.password = password
         self.use_ssl = use_ssl
     
-    def send(self, to_addrs: list[str], subject: str, html_content: str, from_name: str = "服务器巡检系统"):
+    def send(self, to_addrs, subject, html_content, from_name="服务器巡检系统"):
         """发送HTML邮件"""
         msg = MIMEMultipart("alternative")
         msg["Subject"] = subject
-        msg["From"] = f"{from_name} <{self.username}>"
+        msg["From"] = "{0} <{1}>".format(from_name, self.username)
         msg["To"] = ", ".join(to_addrs)
         
         html_part = MIMEText(html_content, "html", "utf-8")
@@ -620,14 +650,14 @@ class EmailSender:
         try:
             server.login(self.username, self.password)
             server.sendmail(self.username, to_addrs, msg.as_string())
-            print(f"✅ 邮件发送成功: {', '.join(to_addrs)}")
+            print("✅ 邮件发送成功: {0}".format(", ".join(to_addrs)))
         finally:
             server.quit()
 
 
-def load_servers_from_file(file_path: str) -> list[ServerConfig]:
+def load_servers_from_file(file_path):
     """从JSON文件加载服务器配置"""
-    with open(file_path, "r", encoding="utf-8") as f:
+    with open(file_path, "r") as f:
         data = json.load(f)
     
     servers = []
@@ -642,19 +672,19 @@ def load_servers_from_file(file_path: str) -> list[ServerConfig]:
     return servers
 
 
-def run_inspection(servers: list[ServerConfig], max_workers: int = 10) -> list[InspectionResult]:
+def run_inspection(servers, max_workers=10):
     """并发执行巡检"""
     inspector = ServerInspector()
     results = []
     
-    print(f"\n🚀 开始巡检 {len(servers)} 台服务器 (并发数: {max_workers})")
+    print("\n🚀 开始巡检 {0} 台服务器 (并发数: {1})".format(len(servers), max_workers))
     print("-" * 50)
     
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        future_to_server = {
-            executor.submit(inspector.inspect, server): server 
+        future_to_server = dict(
+            (executor.submit(inspector.inspect, server), server)
             for server in servers
-        }
+        )
         
         for future in as_completed(future_to_server):
             server = future_to_server[future]
@@ -663,17 +693,21 @@ def run_inspection(servers: list[ServerConfig], max_workers: int = 10) -> list[I
                 results.append(result)
                 
                 status = "✅" if not result.is_abnormal else "❌"
-                print(f"{status} {server.host}: 评分 {result.score}, {result.risk_level}")
+                print("{0} {1}: 评分 {2}, {3}".format(
+                    status, server.host, result.score, result.risk_level
+                ))
                 
             except Exception as e:
                 # 即使future.result()出错也要记录
-                result = InspectionResult(host=server.host, success=False)
-                result.add_error(f"执行异常: {str(e)}", score_penalty=100)
+                result = InspectionResult(host=server.host)
+                result.success = False
+                result.add_error("执行异常: {0}".format(str(e)), score_penalty=100)
                 results.append(result)
-                print(f"❌ {server.host}: 执行异常 - {str(e)}")
+                print("❌ {0}: 执行异常 - {1}".format(server.host, str(e)))
     
     print("-" * 50)
-    print(f"✅ 巡检完成: 共 {len(results)} 台, 异常 {sum(1 for r in results if r.is_abnormal)} 台")
+    abnormal_count = sum(1 for r in results if r.is_abnormal)
+    print("✅ 巡检完成: 共 {0} 台, 异常 {1} 台".format(len(results), abnormal_count))
     
     return results
 
@@ -707,9 +741,9 @@ def main():
     
     # 保存报告到文件
     if args.output:
-        with open(args.output, "w", encoding="utf-8") as f:
-            f.write(html_report)
-        print(f"📄 报告已保存: {args.output}")
+        with open(args.output, "w") as f:
+            f.write(html_report.encode("utf-8"))
+        print("📄 报告已保存: {0}".format(args.output))
     
     # 发送邮件
     if args.smtp_host and args.smtp_user and args.smtp_pass and args.mail_to:
@@ -723,11 +757,14 @@ def main():
             )
             sender.send(
                 to_addrs=args.mail_to,
-                subject=f"{args.mail_subject} - {datetime.now().strftime('%Y-%m-%d')}",
+                subject="{0} - {1}".format(
+                    args.mail_subject,
+                    datetime.now().strftime('%Y-%m-%d')
+                ),
                 html_content=html_report,
             )
         except Exception as e:
-            print(f"❌ 邮件发送失败: {str(e)}")
+            print("❌ 邮件发送失败: {0}".format(str(e)))
     elif args.mail_to:
         print("⚠️  需要提供SMTP配置才能发送邮件")
 

@@ -1,2 +1,3 @@
-# 服务器巡检脚本依赖
-paramiko>=3.4.0    # SSH连接库
+# 服务器巡检脚本依赖 (Python 2.7.5 兼容)
+paramiko>=2.4.0,<3.0.0    # SSH连接库 (Python 2.7 兼容版本)
+futures>=3.0.0            # Python 2.7 并发库
