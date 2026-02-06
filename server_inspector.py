@@ -9,14 +9,30 @@ from __future__ import print_function, unicode_literals
 
 import os
 import sys
+import signal
 import smtplib
 import argparse
 import json
+import threading
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import paramiko
+
+# 全局停止标志
+_shutdown_event = threading.Event()
+
+
+def signal_handler(signum, frame):
+    """信号处理函数"""
+    print("\n\n⚠️  接收到中断信号 (Ctrl+C)，正在停止巡检...")
+    _shutdown_event.set()
+
+
+# 注册信号处理
+signal.signal(signal.SIGINT, signal_handler)
+signal.signal(signal.SIGTERM, signal_handler)
 
 
 # ==================== 配置常量 ====================
@@ -761,8 +777,10 @@ def run_inspection(servers, max_workers=10):
     """并发执行巡检"""
     inspector = ServerInspector()
     results = []
+    interrupted = False
     
     print("\n🚀 开始巡检 {0} 台服务器 (并发数: {1})".format(len(servers), max_workers))
+    print("   (按 Ctrl+C 可中断巡检)")
     print("-" * 50)
     
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -771,45 +789,64 @@ def run_inspection(servers, max_workers=10):
             for server in servers
         )
         
-        for future in as_completed(future_to_server):
-            server = future_to_server[future]
-            try:
-                result = future.result()
-                results.append(result)
+        try:
+            for future in as_completed(future_to_server):
+                # 检查是否收到中断信号
+                if _shutdown_event.is_set():
+                    interrupted = True
+                    # 取消尚未开始的任务
+                    for f in future_to_server:
+                        f.cancel()
+                    break
                 
-                status = "✅" if not result.is_abnormal else "❌"
-                output_msg = "{0} {1}: 评分 {2}, {3}".format(
-                    status, server.host, result.score, result.risk_level
-                )
-                # 高风险显示具体原因
-                if result.score < 50 and result.risk_summary:
-                    output_msg += " [原因: {0}]".format(", ".join(result.risk_summary))
-                print(output_msg)
-                
-            except Exception as e:
-                # 即使future.result()出错也要记录
-                result = InspectionResult(host=server.host)
-                result.success = False
-                result.add_error("执行异常: {0}".format(str(e)), score_penalty=100)
-                results.append(result)
-                print("❌ {0}: 执行异常 - {1}".format(server.host, str(e)))
+                server = future_to_server[future]
+                try:
+                    result = future.result(timeout=1)
+                    results.append(result)
+                    
+                    status = "✅" if not result.is_abnormal else "❌"
+                    output_msg = "{0} {1}: 评分 {2}, {3}".format(
+                        status, server.host, result.score, result.risk_level
+                    )
+                    # 高风险显示具体原因
+                    if result.score < 50 and result.risk_summary:
+                        output_msg += " [原因: {0}]".format(", ".join(result.risk_summary))
+                    print(output_msg)
+                    
+                except Exception as e:
+                    if _shutdown_event.is_set():
+                        interrupted = True
+                        break
+                    # 即使future.result()出错也要记录
+                    result = InspectionResult(host=server.host)
+                    result.success = False
+                    result.add_error("执行异常: {0}".format(str(e)), score_penalty=100)
+                    results.append(result)
+                    print("❌ {0}: 执行异常 - {1}".format(server.host, str(e)))
+        except KeyboardInterrupt:
+            interrupted = True
+            print("\n⚠️  用户中断，正在停止...")
     
     print("-" * 50)
-    abnormal_count = sum(1 for r in results if r.is_abnormal)
-    high_risk_count = sum(1 for r in results if r.score < 50)
-    print("✅ 巡检完成: 共 {0} 台, 异常 {1} 台, 高风险 {2} 台".format(
-        len(results), abnormal_count, high_risk_count
-    ))
+    
+    if interrupted:
+        print("⚠️  巡检被中断: 已完成 {0}/{1} 台".format(len(results), len(servers)))
+    else:
+        abnormal_count = sum(1 for r in results if r.is_abnormal)
+        high_risk_count = sum(1 for r in results if r.score < 50)
+        print("✅ 巡检完成: 共 {0} 台, 异常 {1} 台, 高风险 {2} 台".format(
+            len(results), abnormal_count, high_risk_count
+        ))
     
     # 高风险服务器汇总
-    if high_risk_count > 0:
+    high_risk_results = [r for r in results if r.score < 50]
+    if high_risk_results:
         print("\n⚠️  高风险服务器汇总:")
-        for r in results:
-            if r.score < 50:
-                reasons = ", ".join(r.risk_summary) if r.risk_summary else "未知"
-                print("   • {0} (评分: {1}) - 原因: {2}".format(r.host, r.score, reasons))
+        for r in high_risk_results:
+            reasons = ", ".join(r.risk_summary) if r.risk_summary else "未知"
+            print("   • {0} (评分: {1}) - 原因: {2}".format(r.host, r.score, reasons))
     
-    return results
+    return results, interrupted
 
 
 def main():
@@ -828,26 +865,44 @@ def main():
     args = parser.parse_args()
     
     # 加载服务器配置
-    servers = load_servers_from_file(args.config)
+    try:
+        servers = load_servers_from_file(args.config)
+    except Exception as e:
+        print("❌ 加载配置文件失败: {0}".format(str(e)))
+        return
+    
     if not servers:
         print("❌ 未找到服务器配置")
         return
     
     # 执行巡检
-    results = run_inspection(servers, max_workers=args.workers)
+    results, interrupted = run_inspection(servers, max_workers=args.workers)
+    
+    # 如果没有任何结果，直接退出
+    if not results:
+        print("⚠️  没有巡检结果")
+        return
     
     # 生成HTML报告
     html_report = HTMLReportGenerator.generate(results, title=args.mail_subject)
     
     # 保存报告到文件
     if args.output:
-        with open(args.output, "w") as f:
-            f.write(html_report.encode("utf-8"))
-        print("📄 报告已保存: {0}".format(args.output))
-    
-    # 发送邮件
-    if args.smtp_host and args.smtp_user and args.smtp_pass and args.mail_to:
         try:
+            with open(args.output, "w") as f:
+                f.write(html_report.encode("utf-8"))
+            print("📄 报告已保存: {0}".format(args.output))
+        except Exception as e:
+            print("❌ 保存报告失败: {0}".format(str(e)))
+    
+    # 发送邮件（即使被中断，如果有结果也可以发送部分报告）
+    if args.smtp_host and args.smtp_user and args.smtp_pass and args.mail_to:
+        if interrupted:
+            print("\n📧 是否发送部分巡检结果邮件? (已完成 {0}/{1} 台)".format(
+                len(results), len(servers)
+            ))
+        try:
+            subject_suffix = " [部分结果]" if interrupted else ""
             sender = EmailSender(
                 smtp_host=args.smtp_host,
                 smtp_port=args.smtp_port,
@@ -857,9 +912,10 @@ def main():
             )
             sender.send(
                 to_addrs=args.mail_to,
-                subject="{0} - {1}".format(
+                subject="{0} - {1}{2}".format(
                     args.mail_subject,
-                    datetime.now().strftime('%Y-%m-%d')
+                    datetime.now().strftime('%Y-%m-%d'),
+                    subject_suffix
                 ),
                 html_content=html_report,
             )
@@ -867,6 +923,10 @@ def main():
             print("❌ 邮件发送失败: {0}".format(str(e)))
     elif args.mail_to:
         print("⚠️  需要提供SMTP配置才能发送邮件")
+    
+    # 返回退出码
+    if interrupted:
+        sys.exit(130)  # 标准的 Ctrl+C 退出码
 
 
 if __name__ == "__main__":
