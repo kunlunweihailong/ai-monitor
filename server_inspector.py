@@ -121,7 +121,12 @@ class InspectionResult(object):
             elif "SSH" in error:
                 reasons.append("SSH异常")
             else:
-                reasons.append("系统异常")
+                # 未分类的错误，显示具体报错信息
+                # 截取错误信息，避免过长
+                error_msg = error
+                if len(error_msg) > 50:
+                    error_msg = error_msg[:47] + "..."
+                reasons.append(error_msg)
         # 去重
         return list(dict.fromkeys(reasons))
     
