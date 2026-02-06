@@ -341,10 +341,10 @@ class HTMLReportGenerator(object):
         }}
         body {{
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            background: #0d1117;
             min-height: 100vh;
             padding: 30px;
-            color: #e0e0e0;
+            color: #c9d1d9;
         }}
         .container {{
             max-width: 1200px;
@@ -353,167 +353,167 @@ class HTMLReportGenerator(object):
         .header {{
             text-align: center;
             margin-bottom: 40px;
-            padding: 30px;
-            background: rgba(255, 255, 255, 0.05);
+            padding: 40px 30px;
+            background: linear-gradient(135deg, #161b22 0%, #21262d 100%);
             border-radius: 16px;
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            border: 1px solid #30363d;
         }}
         .header h1 {{
-            font-size: 2.5em;
-            color: #fff;
-            margin-bottom: 10px;
-            text-shadow: 0 2px 10px rgba(0,0,0,0.3);
+            font-size: 2.2em;
+            color: #58a6ff;
+            margin-bottom: 12px;
+            letter-spacing: -0.5px;
         }}
         .header .subtitle {{
-            color: #a0a0a0;
-            font-size: 1.1em;
+            color: #8b949e;
+            font-size: 1em;
         }}
         .summary {{
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 20px;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 16px;
             margin-bottom: 40px;
         }}
         .summary-card {{
-            background: rgba(255, 255, 255, 0.08);
+            background: #161b22;
             border-radius: 12px;
-            padding: 25px;
+            padding: 24px 20px;
             text-align: center;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            transition: transform 0.3s ease, box-shadow 0.3s ease;
-        }}
-        .summary-card:hover {{
-            transform: translateY(-5px);
-            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            border: 1px solid #30363d;
         }}
         .summary-card .number {{
-            font-size: 3em;
-            font-weight: bold;
-            margin-bottom: 10px;
+            font-size: 2.8em;
+            font-weight: 700;
+            margin-bottom: 8px;
+            line-height: 1;
         }}
         .summary-card .label {{
-            color: #a0a0a0;
-            font-size: 0.95em;
+            color: #8b949e;
+            font-size: 0.9em;
+            font-weight: 500;
         }}
-        .summary-card.total .number {{ color: #4ecdc4; }}
-        .summary-card.abnormal .number {{ color: #ff6b6b; }}
-        .summary-card.high-risk .number {{ color: #dc3545; }}
-        .summary-card.failed .number {{ color: #feca57; }}
-        .summary-card.score .number {{ color: #48dbfb; }}
+        .summary-card.total .number {{ color: #58a6ff; }}
+        .summary-card.abnormal .number {{ color: #f97583; }}
+        .summary-card.high-risk .number {{ color: #ff7b72; }}
+        .summary-card.failed .number {{ color: #d29922; }}
+        .summary-card.score .number {{ color: #56d364; }}
         
         .section-title {{
-            font-size: 1.5em;
-            color: #fff;
+            font-size: 1.4em;
+            color: #c9d1d9;
             margin-bottom: 20px;
-            padding-bottom: 10px;
-            border-bottom: 2px solid rgba(255, 255, 255, 0.1);
+            padding-bottom: 12px;
+            border-bottom: 1px solid #30363d;
+            font-weight: 600;
         }}
         
         .server-list {{
             display: flex;
             flex-direction: column;
-            gap: 20px;
+            gap: 16px;
         }}
         .server-card {{
-            background: rgba(255, 255, 255, 0.06);
+            background: #161b22;
             border-radius: 12px;
             overflow: hidden;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            transition: box-shadow 0.3s ease;
-        }}
-        .server-card:hover {{
-            box-shadow: 0 5px 20px rgba(0,0,0,0.3);
+            border: 1px solid #30363d;
         }}
         .server-header {{
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 20px 25px;
-            background: rgba(0, 0, 0, 0.2);
+            padding: 18px 24px;
+            background: #21262d;
+            border-bottom: 1px solid #30363d;
         }}
         .server-host {{
-            font-size: 1.3em;
+            font-size: 1.15em;
             font-weight: 600;
-            color: #fff;
+            color: #c9d1d9;
         }}
         .server-score {{
             display: flex;
             align-items: center;
-            gap: 15px;
+            gap: 12px;
         }}
         .score-badge {{
-            font-size: 1.8em;
-            font-weight: bold;
+            font-size: 1.6em;
+            font-weight: 700;
         }}
         .risk-badge {{
-            padding: 6px 14px;
+            padding: 6px 16px;
             border-radius: 20px;
             font-size: 0.85em;
-            font-weight: 500;
+            font-weight: 600;
+            letter-spacing: 0.3px;
         }}
         .server-body {{
-            padding: 25px;
+            padding: 24px;
         }}
         .metrics {{
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-            gap: 15px;
-            margin-bottom: 20px;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 12px;
+            margin-bottom: 16px;
         }}
         .metric {{
-            background: rgba(0, 0, 0, 0.2);
-            padding: 15px;
-            border-radius: 8px;
+            background: #0d1117;
+            padding: 16px;
+            border-radius: 10px;
+            border: 1px solid #21262d;
         }}
         .metric-label {{
-            color: #a0a0a0;
-            font-size: 0.85em;
-            margin-bottom: 5px;
+            color: #8b949e;
+            font-size: 0.8em;
+            margin-bottom: 6px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }}
         .metric-value {{
-            font-size: 1.4em;
+            font-size: 1.3em;
             font-weight: 600;
-            color: #fff;
+            color: #c9d1d9;
         }}
         .errors {{
-            background: rgba(220, 53, 69, 0.15);
-            border-left: 4px solid #dc3545;
-            padding: 15px 20px;
-            border-radius: 0 8px 8px 0;
-            margin-top: 15px;
+            background: #21262d;
+            border-left: 4px solid #f85149;
+            padding: 16px 20px;
+            border-radius: 0 10px 10px 0;
+            margin-top: 16px;
         }}
         .errors-title {{
-            color: #ff6b6b;
+            color: #f85149;
             font-weight: 600;
-            margin-bottom: 10px;
+            margin-bottom: 12px;
             font-size: 0.95em;
         }}
         .error-item {{
             padding: 8px 0;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-            color: #f0a0a0;
+            border-bottom: 1px solid #30363d;
+            color: #f97583;
+            font-size: 0.9em;
         }}
         .error-item:last-child {{
             border-bottom: none;
         }}
         .warnings {{
-            background: rgba(255, 193, 7, 0.15);
-            border-left: 4px solid #ffc107;
-            padding: 15px 20px;
-            border-radius: 0 8px 8px 0;
-            margin-top: 15px;
+            background: #21262d;
+            border-left: 4px solid #d29922;
+            padding: 16px 20px;
+            border-radius: 0 10px 10px 0;
+            margin-top: 16px;
         }}
         .warnings-title {{
-            color: #feca57;
+            color: #d29922;
             font-weight: 600;
-            margin-bottom: 10px;
+            margin-bottom: 12px;
             font-size: 0.95em;
         }}
         .warning-item {{
             padding: 8px 0;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-            color: #f0d090;
+            border-bottom: 1px solid #30363d;
+            color: #e3b341;
+            font-size: 0.9em;
         }}
         .warning-item:last-child {{
             border-bottom: none;
@@ -522,71 +522,65 @@ class HTMLReportGenerator(object):
             text-align: center;
             margin-top: 40px;
             padding: 20px;
-            color: #707070;
-            font-size: 0.9em;
+            color: #484f58;
+            font-size: 0.85em;
         }}
         .no-issues {{
-            color: #4ecdc4;
-            padding: 15px;
+            color: #56d364;
+            padding: 20px;
             text-align: center;
-            font-size: 1.1em;
+            font-size: 1em;
+            background: #0d1117;
+            border-radius: 10px;
+            border: 1px solid #238636;
         }}
         .high-risk-alert {{
-            background: linear-gradient(135deg, rgba(220, 53, 69, 0.25) 0%, rgba(220, 53, 69, 0.15) 100%);
-            border: 2px solid #dc3545;
-            border-radius: 10px;
-            padding: 18px 22px;
+            background: #3d1418;
+            border: 2px solid #f85149;
+            border-radius: 12px;
+            padding: 20px 24px;
             margin-bottom: 20px;
-            animation: pulse-alert 2s ease-in-out infinite;
-        }}
-        @keyframes pulse-alert {{
-            0%, 100% {{ box-shadow: 0 0 5px rgba(220, 53, 69, 0.3); }}
-            50% {{ box-shadow: 0 0 20px rgba(220, 53, 69, 0.6); }}
         }}
         .high-risk-title {{
-            color: #ff6b6b;
+            color: #ff7b72;
             font-size: 1.1em;
-            font-weight: bold;
-            margin-bottom: 10px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
+            font-weight: 700;
+            margin-bottom: 8px;
         }}
-        .high-risk-reasons {{
+        .high-risk-desc {{
+            color: #f97583;
+            font-size: 0.95em;
+            margin-bottom: 14px;
+        }}
+        .risk-reasons {{
             display: flex;
             flex-wrap: wrap;
             gap: 10px;
-            margin-top: 10px;
         }}
         .risk-reason-tag {{
-            background: rgba(220, 53, 69, 0.3);
-            color: #ff8a8a;
-            padding: 6px 14px;
-            border-radius: 15px;
-            font-size: 0.9em;
-            font-weight: 500;
-            border: 1px solid rgba(220, 53, 69, 0.5);
+            background: #f85149;
+            color: #ffffff;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 0.85em;
+            font-weight: 600;
         }}
         .deduction-alert {{
-            background: linear-gradient(135deg, rgba(255, 193, 7, 0.2) 0%, rgba(255, 193, 7, 0.1) 100%);
-            border: 1px solid rgba(255, 193, 7, 0.5);
-            border-radius: 10px;
-            padding: 15px 20px;
+            background: #2d2305;
+            border: 2px solid #d29922;
+            border-radius: 12px;
+            padding: 18px 22px;
             margin-bottom: 20px;
         }}
         .deduction-title {{
-            color: #ffc107;
+            color: #e3b341;
             font-size: 1em;
-            font-weight: bold;
-            margin-bottom: 10px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
+            font-weight: 700;
+            margin-bottom: 12px;
         }}
         .deduction-alert .risk-reason-tag {{
-            background: rgba(255, 193, 7, 0.25);
-            color: #ffd54f;
-            border: 1px solid rgba(255, 193, 7, 0.5);
+            background: #d29922;
+            color: #0d1117;
         }}
     </style>
 </head>
@@ -667,16 +661,16 @@ class HTMLReportGenerator(object):
                     html += """
                     <div class="high-risk-alert">
                         <div class="high-risk-title">&#9888; 高风险警告</div>
-                        <div>该服务器存在严重风险，需要立即关注！</div>
-                        <div class="high-risk-reasons">{reasons}</div>
+                        <div class="high-risk-desc">该服务器存在严重风险，需要立即关注！</div>
+                        <div class="risk-reasons">{reasons}</div>
                     </div>
 """.format(reasons=reason_tags)
                 else:
                     # 中低风险，显示减分原因
                     html += """
                     <div class="deduction-alert">
-                        <div class="deduction-title">&#128269; 减分原因</div>
-                        <div class="high-risk-reasons">{reasons}</div>
+                        <div class="deduction-title">&#128270; 减分原因</div>
+                        <div class="risk-reasons">{reasons}</div>
                     </div>
 """.format(reasons=reason_tags)
             
