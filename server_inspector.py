@@ -86,6 +86,30 @@ class InspectionResult(object):
             return "高风险"
     
     @property
+    def risk_summary(self):
+        """风险摘要（用于高风险提示）"""
+        reasons = []
+        for error in self.errors:
+            if "CPU" in error:
+                reasons.append("CPU过载")
+            elif "内存" in error:
+                reasons.append("内存不足")
+            elif "磁盘" in error:
+                reasons.append("磁盘空间不足")
+            elif "僵尸" in error:
+                reasons.append("存在僵尸进程")
+            elif "超时" in error or "连接" in error:
+                reasons.append("连接失败")
+            elif "认证" in error:
+                reasons.append("认证失败")
+            elif "SSH" in error:
+                reasons.append("SSH异常")
+            else:
+                reasons.append("系统异常")
+        # 去重
+        return list(dict.fromkeys(reasons))
+    
+    @property
     def risk_color(self):
         """风险等级对应颜色"""
         if self.score >= 90:
@@ -276,6 +300,7 @@ class HTMLReportGenerator(object):
         total = len(results)
         abnormal = sum(1 for r in results if r.is_abnormal)
         failed = sum(1 for r in results if not r.success)
+        high_risk = sum(1 for r in results if r.score < 50)
         avg_score = sum(r.score for r in results) / total if total > 0 else 0
         
         html = """
@@ -350,6 +375,7 @@ class HTMLReportGenerator(object):
         }}
         .summary-card.total .number {{ color: #4ecdc4; }}
         .summary-card.abnormal .number {{ color: #ff6b6b; }}
+        .summary-card.high-risk .number {{ color: #dc3545; }}
         .summary-card.failed .number {{ color: #feca57; }}
         .summary-card.score .number {{ color: #48dbfb; }}
         
@@ -482,6 +508,42 @@ class HTMLReportGenerator(object):
             text-align: center;
             font-size: 1.1em;
         }}
+        .high-risk-alert {{
+            background: linear-gradient(135deg, rgba(220, 53, 69, 0.25) 0%, rgba(220, 53, 69, 0.15) 100%);
+            border: 2px solid #dc3545;
+            border-radius: 10px;
+            padding: 18px 22px;
+            margin-bottom: 20px;
+            animation: pulse-alert 2s ease-in-out infinite;
+        }}
+        @keyframes pulse-alert {{
+            0%, 100% {{ box-shadow: 0 0 5px rgba(220, 53, 69, 0.3); }}
+            50% {{ box-shadow: 0 0 20px rgba(220, 53, 69, 0.6); }}
+        }}
+        .high-risk-title {{
+            color: #ff6b6b;
+            font-size: 1.1em;
+            font-weight: bold;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }}
+        .high-risk-reasons {{
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 10px;
+        }}
+        .risk-reason-tag {{
+            background: rgba(220, 53, 69, 0.3);
+            color: #ff8a8a;
+            padding: 6px 14px;
+            border-radius: 15px;
+            font-size: 0.9em;
+            font-weight: 500;
+            border: 1px solid rgba(220, 53, 69, 0.5);
+        }}
     </style>
 </head>
 <body>
@@ -500,6 +562,10 @@ class HTMLReportGenerator(object):
                 <div class="number">{abnormal}</div>
                 <div class="label">异常服务器</div>
             </div>
+            <div class="summary-card high-risk">
+                <div class="number">{high_risk}</div>
+                <div class="label">高风险服务器</div>
+            </div>
             <div class="summary-card failed">
                 <div class="number">{failed}</div>
                 <div class="label">连接失败</div>
@@ -517,6 +583,7 @@ class HTMLReportGenerator(object):
             gen_time=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             total=total,
             abnormal=abnormal,
+            high_risk=high_risk,
             failed=failed,
             avg_score=avg_score
         )
@@ -538,6 +605,28 @@ class HTMLReportGenerator(object):
                     </div>
                 </div>
                 <div class="server-body">
+""".format(
+                host=r.host,
+                risk_color=r.risk_color,
+                score=r.score,
+                risk_level=r.risk_level
+            )
+            
+            # 高风险服务器显示风险原因摘要
+            if r.score < 50 and r.risk_summary:
+                reason_tags = "".join(
+                    '<span class="risk-reason-tag">{0}</span>'.format(reason) 
+                    for reason in r.risk_summary
+                )
+                html += """
+                    <div class="high-risk-alert">
+                        <div class="high-risk-title">&#9888; 高风险警告</div>
+                        <div>该服务器存在严重风险，需要立即关注！</div>
+                        <div class="high-risk-reasons">{reasons}</div>
+                    </div>
+""".format(reasons=reason_tags)
+            
+            html += """
                     <div class="metrics">
                         <div class="metric">
                             <div class="metric-label">CPU使用率</div>
@@ -557,10 +646,6 @@ class HTMLReportGenerator(object):
                         </div>
                     </div>
 """.format(
-                host=r.host,
-                risk_color=r.risk_color,
-                score=r.score,
-                risk_level=r.risk_level,
                 cpu=cpu_display,
                 mem=mem_display,
                 zombie=r.zombie_count,
@@ -693,9 +778,13 @@ def run_inspection(servers, max_workers=10):
                 results.append(result)
                 
                 status = "✅" if not result.is_abnormal else "❌"
-                print("{0} {1}: 评分 {2}, {3}".format(
+                output_msg = "{0} {1}: 评分 {2}, {3}".format(
                     status, server.host, result.score, result.risk_level
-                ))
+                )
+                # 高风险显示具体原因
+                if result.score < 50 and result.risk_summary:
+                    output_msg += " [原因: {0}]".format(", ".join(result.risk_summary))
+                print(output_msg)
                 
             except Exception as e:
                 # 即使future.result()出错也要记录
@@ -707,7 +796,18 @@ def run_inspection(servers, max_workers=10):
     
     print("-" * 50)
     abnormal_count = sum(1 for r in results if r.is_abnormal)
-    print("✅ 巡检完成: 共 {0} 台, 异常 {1} 台".format(len(results), abnormal_count))
+    high_risk_count = sum(1 for r in results if r.score < 50)
+    print("✅ 巡检完成: 共 {0} 台, 异常 {1} 台, 高风险 {2} 台".format(
+        len(results), abnormal_count, high_risk_count
+    ))
+    
+    # 高风险服务器汇总
+    if high_risk_count > 0:
+        print("\n⚠️  高风险服务器汇总:")
+        for r in results:
+            if r.score < 50:
+                reasons = ", ".join(r.risk_summary) if r.risk_summary else "未知"
+                print("   • {0} (评分: {1}) - 原因: {2}".format(r.host, r.score, reasons))
     
     return results
 
