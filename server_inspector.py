@@ -567,6 +567,27 @@ class HTMLReportGenerator(object):
             font-weight: 500;
             border: 1px solid rgba(220, 53, 69, 0.5);
         }}
+        .deduction-alert {{
+            background: linear-gradient(135deg, rgba(255, 193, 7, 0.2) 0%, rgba(255, 193, 7, 0.1) 100%);
+            border: 1px solid rgba(255, 193, 7, 0.5);
+            border-radius: 10px;
+            padding: 15px 20px;
+            margin-bottom: 20px;
+        }}
+        .deduction-title {{
+            color: #ffc107;
+            font-size: 1em;
+            font-weight: bold;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }}
+        .deduction-alert .risk-reason-tag {{
+            background: rgba(255, 193, 7, 0.25);
+            color: #ffd54f;
+            border: 1px solid rgba(255, 193, 7, 0.5);
+        }}
     </style>
 </head>
 <body>
@@ -635,16 +656,26 @@ class HTMLReportGenerator(object):
                 risk_level=r.risk_level
             )
             
-            # 高风险服务器显示风险原因摘要
-            if r.score < 50 and r.risk_summary:
+            # 显示减分原因摘要
+            if r.score < 100 and r.risk_summary:
                 reason_tags = "".join(
                     '<span class="risk-reason-tag">{0}</span>'.format(reason) 
                     for reason in r.risk_summary
                 )
-                html += """
+                if r.score < 50:
+                    # 高风险
+                    html += """
                     <div class="high-risk-alert">
                         <div class="high-risk-title">&#9888; 高风险警告</div>
                         <div>该服务器存在严重风险，需要立即关注！</div>
+                        <div class="high-risk-reasons">{reasons}</div>
+                    </div>
+""".format(reasons=reason_tags)
+                else:
+                    # 中低风险，显示减分原因
+                    html += """
+                    <div class="deduction-alert">
+                        <div class="deduction-title">&#128269; 减分原因</div>
                         <div class="high-risk-reasons">{reasons}</div>
                     </div>
 """.format(reasons=reason_tags)
@@ -815,8 +846,8 @@ def run_inspection(servers, max_workers=10):
                     output_msg = "{0} {1}: 评分 {2}, {3}".format(
                         status, server.host, result.score, result.risk_level
                     )
-                    # 高风险显示具体原因
-                    if result.score < 50 and result.risk_summary:
+                    # 低于100分显示减分原因
+                    if result.score < 100 and result.risk_summary:
                         output_msg += " [原因: {0}]".format(", ".join(result.risk_summary))
                     print(output_msg)
                     
@@ -845,13 +876,18 @@ def run_inspection(servers, max_workers=10):
             len(results), abnormal_count, high_risk_count
         ))
     
-    # 高风险服务器汇总
-    high_risk_results = [r for r in results if r.score < 50]
-    if high_risk_results:
-        print("\n⚠️  高风险服务器汇总:")
-        for r in high_risk_results:
+    # 异常服务器汇总（低于100分）
+    abnormal_results = [r for r in results if r.score < 100]
+    if abnormal_results:
+        # 按评分排序，分数低的在前
+        abnormal_results.sort(key=lambda x: x.score)
+        print("\n📋 减分服务器汇总:")
+        for r in abnormal_results:
             reasons = ", ".join(r.risk_summary) if r.risk_summary else "未知"
-            print("   • {0} (评分: {1}) - 原因: {2}".format(r.host, r.score, reasons))
+            level_icon = "🔴" if r.score < 50 else "🟠" if r.score < 70 else "🟡"
+            print("   {0} {1} (评分: {2}, {3}) - 原因: {4}".format(
+                level_icon, r.host, r.score, r.risk_level, reasons
+            ))
     
     return results, interrupted
 
