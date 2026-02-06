@@ -166,7 +166,9 @@ class ServerInspector(object):
         }
         
         if config.key_file:
-            connect_kwargs["key_filename"] = config.key_file
+            # 展开 ~ 为实际用户主目录路径
+            key_path = os.path.expanduser(config.key_file)
+            connect_kwargs["key_filename"] = key_path
         elif config.password:
             connect_kwargs["password"] = config.password
         
