@@ -18,6 +18,8 @@ from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.header import Header
+from email.utils import formataddr
 import paramiko
 
 # 全局停止标志
@@ -767,8 +769,8 @@ class EmailSender(object):
     def send(self, to_addrs, subject, html_content, from_name="服务器巡检系统"):
         """发送HTML邮件"""
         msg = MIMEMultipart("alternative")
-        msg["Subject"] = subject
-        msg["From"] = "{0} <{1}>".format(from_name, self.username)
+        msg["Subject"] = Header(subject, "utf-8")
+        msg["From"] = formataddr((str(Header(from_name, "utf-8")), self.username))
         msg["To"] = ", ".join(to_addrs)
         
         html_part = MIMEText(html_content, "html", "utf-8")
