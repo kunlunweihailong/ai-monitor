@@ -780,18 +780,36 @@ class EmailSender(object):
         html_part = MIMEText(html_content, "html", "utf-8")
         msg.attach(html_part)
         
-        if self.use_ssl:
-            server = smtplib.SMTP_SSL(self.smtp_host, self.smtp_port)
-        else:
-            server = smtplib.SMTP(self.smtp_host, self.smtp_port)
-            server.starttls()
-        
+        server = None
         try:
+            # 根据端口自动选择连接方式
+            # 465: 直接 SSL 连接 (SMTP_SSL)
+            # 587/25: 先普通连接再 STARTTLS
+            if self.smtp_port == 465:
+                # 直接 SSL 连接
+                server = smtplib.SMTP_SSL(self.smtp_host, self.smtp_port)
+            elif self.smtp_port == 587 or self.smtp_port == 25:
+                # STARTTLS 模式
+                server = smtplib.SMTP(self.smtp_host, self.smtp_port)
+                server.ehlo()
+                server.starttls()
+                server.ehlo()
+            else:
+                # 其他端口根据 use_ssl 参数决定
+                if self.use_ssl:
+                    server = smtplib.SMTP_SSL(self.smtp_host, self.smtp_port)
+                else:
+                    server = smtplib.SMTP(self.smtp_host, self.smtp_port)
+                    server.ehlo()
+                    server.starttls()
+                    server.ehlo()
+            
             server.login(self.username, self.password)
             server.sendmail(self.username, to_addrs, msg.as_string())
             print("✅ 邮件发送成功: {0}".format(", ".join(to_addrs)))
         finally:
-            server.quit()
+            if server:
+                server.quit()
 
 
 class EmailConfig(object):
