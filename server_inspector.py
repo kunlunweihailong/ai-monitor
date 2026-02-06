@@ -794,11 +794,31 @@ class EmailSender(object):
             server.quit()
 
 
-def load_servers_from_file(file_path):
-    """从JSON文件加载服务器配置"""
+class EmailConfig(object):
+    """邮件配置"""
+    
+    def __init__(self, smtp_host=None, smtp_port=465, smtp_user=None, 
+                 smtp_pass=None, smtp_ssl=True, mail_to=None, mail_subject="服务器巡检报告"):
+        self.smtp_host = smtp_host
+        self.smtp_port = smtp_port
+        self.smtp_user = smtp_user
+        self.smtp_pass = smtp_pass
+        self.smtp_ssl = smtp_ssl
+        self.mail_to = mail_to if mail_to else []
+        self.mail_subject = mail_subject
+    
+    @property
+    def is_valid(self):
+        """检查邮件配置是否完整"""
+        return all([self.smtp_host, self.smtp_user, self.smtp_pass, self.mail_to])
+
+
+def load_config_from_file(file_path):
+    """从JSON文件加载配置（服务器列表和邮件配置）"""
     with open(file_path, "r") as f:
         data = json.load(f)
     
+    # 加载服务器配置
     servers = []
     for item in data.get("servers", []):
         servers.append(ServerConfig(
@@ -808,7 +828,27 @@ def load_servers_from_file(file_path):
             password=item.get("password"),
             key_file=item.get("key_file"),
         ))
-    return servers
+    
+    # 加载邮件配置
+    email_config = None
+    email_data = data.get("email")
+    if email_data:
+        mail_to = email_data.get("mail_to", [])
+        # 兼容字符串和列表格式
+        if isinstance(mail_to, str):
+            mail_to = [mail_to]
+        
+        email_config = EmailConfig(
+            smtp_host=email_data.get("smtp_host"),
+            smtp_port=email_data.get("smtp_port", 465),
+            smtp_user=email_data.get("smtp_user"),
+            smtp_pass=email_data.get("smtp_pass"),
+            smtp_ssl=email_data.get("smtp_ssl", True),
+            mail_to=mail_to,
+            mail_subject=email_data.get("mail_subject", "服务器巡检报告"),
+        )
+    
+    return servers, email_config
 
 
 def run_inspection(servers, max_workers=10):
@@ -907,9 +947,9 @@ def main():
     
     args = parser.parse_args()
     
-    # 加载服务器配置
+    # 加载配置文件（服务器列表和邮件配置）
     try:
-        servers = load_servers_from_file(args.config)
+        servers, file_email_config = load_config_from_file(args.config)
     except Exception as e:
         print("❌ 加载配置文件失败: {0}".format(str(e)))
         return
@@ -917,6 +957,21 @@ def main():
     if not servers:
         print("❌ 未找到服务器配置")
         return
+    
+    # 合并邮件配置（命令行参数优先级高于配置文件）
+    email_config = file_email_config if file_email_config else EmailConfig()
+    if args.smtp_host:
+        email_config.smtp_host = args.smtp_host
+    if args.smtp_port != 465:  # 非默认值时覆盖
+        email_config.smtp_port = args.smtp_port
+    if args.smtp_user:
+        email_config.smtp_user = args.smtp_user
+    if args.smtp_pass:
+        email_config.smtp_pass = args.smtp_pass
+    if args.mail_to:
+        email_config.mail_to = args.mail_to
+    if args.mail_subject != "服务器巡检报告":  # 非默认值时覆盖
+        email_config.mail_subject = args.mail_subject
     
     # 执行巡检
     results, interrupted = run_inspection(servers, max_workers=args.workers)
@@ -927,7 +982,7 @@ def main():
         return
     
     # 生成HTML报告
-    html_report = HTMLReportGenerator.generate(results, title=args.mail_subject)
+    html_report = HTMLReportGenerator.generate(results, title=email_config.mail_subject)
     
     # 保存报告到文件
     if args.output:
@@ -939,24 +994,24 @@ def main():
             print("❌ 保存报告失败: {0}".format(str(e)))
     
     # 发送邮件（即使被中断，如果有结果也可以发送部分报告）
-    if args.smtp_host and args.smtp_user and args.smtp_pass and args.mail_to:
+    if email_config.is_valid:
         if interrupted:
-            print("\n📧 是否发送部分巡检结果邮件? (已完成 {0}/{1} 台)".format(
+            print("\n📧 发送部分巡检结果邮件 (已完成 {0}/{1} 台)".format(
                 len(results), len(servers)
             ))
         try:
             subject_suffix = " [部分结果]" if interrupted else ""
             sender = EmailSender(
-                smtp_host=args.smtp_host,
-                smtp_port=args.smtp_port,
-                username=args.smtp_user,
-                password=args.smtp_pass,
-                use_ssl=args.smtp_ssl,
+                smtp_host=email_config.smtp_host,
+                smtp_port=email_config.smtp_port,
+                username=email_config.smtp_user,
+                password=email_config.smtp_pass,
+                use_ssl=email_config.smtp_ssl,
             )
             sender.send(
-                to_addrs=args.mail_to,
+                to_addrs=email_config.mail_to,
                 subject="{0} - {1}{2}".format(
-                    args.mail_subject,
+                    email_config.mail_subject,
                     datetime.now().strftime('%Y-%m-%d'),
                     subject_suffix
                 ),
@@ -964,8 +1019,8 @@ def main():
             )
         except Exception as e:
             print("❌ 邮件发送失败: {0}".format(str(e)))
-    elif args.mail_to:
-        print("⚠️  需要提供SMTP配置才能发送邮件")
+    elif email_config.mail_to:
+        print("⚠️  邮件配置不完整，需要提供 smtp_host, smtp_user, smtp_pass")
     
     # 返回退出码
     if interrupted:
